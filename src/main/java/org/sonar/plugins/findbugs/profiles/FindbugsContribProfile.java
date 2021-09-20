@@ -1,15 +1,17 @@
 package org.sonar.plugins.findbugs.profiles;
 
-import org.sonar.api.server.profile.BuiltInQualityProfilesDefinition;
+import org.sonar.api.profiles.ProfileDefinition;
+import org.sonar.api.profiles.RulesProfile;
+import org.sonar.api.utils.ValidationMessages;
 import org.sonar.plugins.findbugs.FindbugsProfileImporter;
 import org.sonar.plugins.java.Java;
 
 import java.io.InputStreamReader;
 import java.io.Reader;
 
-public class FindbugsContribProfile implements BuiltInQualityProfilesDefinition {
+public class FindbugsContribProfile extends ProfileDefinition {
 
-  public static final String FB_CONTRIB_PROFILE_NAME = "FindBugs + FB-Contrib";
+  private static final String FB_CONTRIB_PROFILE_NAME = "FindBugs + FB-Contrib";
   private final FindbugsProfileImporter importer;
 
   public FindbugsContribProfile(FindbugsProfileImporter importer) {
@@ -17,13 +19,13 @@ public class FindbugsContribProfile implements BuiltInQualityProfilesDefinition 
   }
 
   @Override
-  public void define(Context context) {
+  public RulesProfile createProfile(ValidationMessages messages) {
     Reader findbugsProfile = new InputStreamReader(this.getClass().getResourceAsStream(
             "/org/sonar/plugins/findbugs/profile-findbugs-and-fb-contrib.xml"));
-    NewBuiltInQualityProfile profile = context.createBuiltInQualityProfile(FB_CONTRIB_PROFILE_NAME, Java.KEY);
-    importer.importProfile(findbugsProfile, profile);
-
-    profile.done();
+    RulesProfile profile = importer.importProfile(findbugsProfile, messages);
+    profile.setLanguage(Java.KEY);
+    profile.setName(FB_CONTRIB_PROFILE_NAME);
+    return profile;
   }
 
 }

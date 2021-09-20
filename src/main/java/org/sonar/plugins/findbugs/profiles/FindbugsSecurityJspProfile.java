@@ -19,16 +19,18 @@
  */
 package org.sonar.plugins.findbugs.profiles;
 
-import org.sonar.api.server.profile.BuiltInQualityProfilesDefinition;
+import org.sonar.api.profiles.ProfileDefinition;
+import org.sonar.api.profiles.RulesProfile;
+import org.sonar.api.utils.ValidationMessages;
 import org.sonar.plugins.findbugs.FindbugsProfileImporter;
 import org.sonar.plugins.findbugs.language.Jsp;
 
 import java.io.InputStreamReader;
 import java.io.Reader;
 
-public class FindbugsSecurityJspProfile implements BuiltInQualityProfilesDefinition {
+public class FindbugsSecurityJspProfile extends ProfileDefinition {
 
-    public static final String FINDBUGS_SECURITY_JSP_PROFILE_NAME = "FindBugs Security JSP";
+    private static final String FINDBUGS_SECURITY_JSP_PROFILE_NAME = "FindBugs Security JSP";
     private final FindbugsProfileImporter importer;
 
     public FindbugsSecurityJspProfile(FindbugsProfileImporter importer) {
@@ -36,13 +38,13 @@ public class FindbugsSecurityJspProfile implements BuiltInQualityProfilesDefinit
     }
 
     @Override
-    public void define(Context context) {
+    public RulesProfile createProfile(ValidationMessages messages) {
         Reader findbugsProfile = new InputStreamReader(this.getClass().getResourceAsStream(
                 "/org/sonar/plugins/findbugs/profile-findbugs-security-jsp.xml"));
-        NewBuiltInQualityProfile profile = context.createBuiltInQualityProfile(FINDBUGS_SECURITY_JSP_PROFILE_NAME, Jsp.KEY);
-        importer.importProfile(findbugsProfile, profile);
-
-        profile.done();
+        RulesProfile profile = importer.importProfile(findbugsProfile, messages);
+        profile.setLanguage(Jsp.KEY);
+        profile.setName(FINDBUGS_SECURITY_JSP_PROFILE_NAME);
+        return profile;
     }
 
 }
