@@ -19,39 +19,30 @@
  */
 package org.sonar.plugins.findbugs.profiles;
 
-import org.junit.Rule;
 import org.junit.Test;
-import org.sonar.api.server.profile.BuiltInQualityProfilesDefinition.BuiltInQualityProfile;
-import org.sonar.api.server.profile.BuiltInQualityProfilesDefinition.Context;
-import org.sonar.api.utils.log.LogTester;
-import org.sonar.api.utils.log.LoggerLevel;
+import org.sonar.api.profiles.RulesProfile;
+import org.sonar.api.utils.ValidationMessages;
 import org.sonar.plugins.findbugs.FindbugsProfileImporter;
+import org.sonar.plugins.findbugs.profiles.FindbugsSecurityAuditProfile;
 import org.sonar.plugins.findbugs.rule.FakeRuleFinder;
 import org.sonar.plugins.findbugs.rules.FindSecurityBugsRulesDefinition;
 import org.sonar.plugins.findbugs.rules.FindbugsRulesDefinition;
-import org.sonar.plugins.java.Java;
 
 import static org.fest.assertions.Assertions.assertThat;
 
 public class FindbugsSecurityAuditProfileTest {
 
-  @Rule
-  public LogTester logTester = new LogTester();
-
   @Test
   public void shouldCreateProfile() {
     FindbugsProfileImporter importer = new FindbugsProfileImporter(FakeRuleFinder.createWithAllRules());
-    FindbugsSecurityAuditProfile findbugsProfile = new FindbugsSecurityAuditProfile(importer);
-    Context context = new Context();
-    findbugsProfile.define(context);
+    FindbugsSecurityAuditProfile secOnlyProfile = new FindbugsSecurityAuditProfile(importer);
+    ValidationMessages validation = ValidationMessages.create();
+    RulesProfile profile = secOnlyProfile.createProfile(validation);
 
     // The standard FindBugs include only 9. Fb-Contrib and FindSecurityBugs include other rules
-    BuiltInQualityProfile profile = context.profile(Java.KEY, FindbugsSecurityAuditProfile.FINDBUGS_SECURITY_AUDIT_PROFILE_NAME);
-    assertThat(logTester.getLogs(LoggerLevel.ERROR)).isNull();
-    // FSB rules must be added to FsbClassifier.groovy otherwise new rules metadata are not added in rules-findsecbugs.xml
-    assertThat(logTester.getLogs(LoggerLevel.WARN)).isNull();
-    assertThat(profile.rules().stream().filter(r -> r.repoKey().equals(FindbugsRulesDefinition.REPOSITORY_KEY)).count()).isEqualTo(8);
-    assertThat(profile.rules().stream().filter(r -> r.repoKey().equals(FindSecurityBugsRulesDefinition.REPOSITORY_KEY)).count())
-    .isEqualTo(FindSecurityBugsRulesDefinition.RULE_COUNT);
+    assertThat(validation.getErrors()).isEmpty();
+    assertThat(validation.getWarnings()).hasSize(8);
+    assertThat(profile.getActiveRulesByRepository(FindbugsRulesDefinition.REPOSITORY_KEY)).hasSize(8);
+    assertThat(profile.getActiveRulesByRepository(FindSecurityBugsRulesDefinition.REPOSITORY_KEY)).hasSize(FindSecurityBugsRulesDefinition.RULE_COUNT);
   }
 }

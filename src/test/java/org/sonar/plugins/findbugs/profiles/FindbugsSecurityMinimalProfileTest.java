@@ -19,39 +19,32 @@
  */
 package org.sonar.plugins.findbugs.profiles;
 
-import org.junit.Rule;
 import org.junit.Test;
-import org.sonar.api.server.profile.BuiltInQualityProfilesDefinition.BuiltInQualityProfile;
-import org.sonar.api.server.profile.BuiltInQualityProfilesDefinition.Context;
-import org.sonar.api.utils.log.LogTester;
-import org.sonar.api.utils.log.LoggerLevel;
+import org.sonar.api.profiles.RulesProfile;
+import org.sonar.api.utils.ValidationMessages;
 import org.sonar.plugins.findbugs.FindbugsProfileImporter;
+import org.sonar.plugins.findbugs.profiles.FindbugsSecurityMinimalProfile;
 import org.sonar.plugins.findbugs.rule.FakeRuleFinder;
 import org.sonar.plugins.findbugs.rules.FindSecurityBugsRulesDefinition;
 import org.sonar.plugins.findbugs.rules.FindbugsRulesDefinition;
-import org.sonar.plugins.java.Java;
 
 import static org.fest.assertions.Assertions.assertThat;
 
 public class FindbugsSecurityMinimalProfileTest {
 
-  @Rule
-  public LogTester logTester = new LogTester();
-
   @Test
   public void shouldCreateProfile() {
     FindbugsProfileImporter importer = new FindbugsProfileImporter(FakeRuleFinder.createWithAllRules());
-    FindbugsSecurityMinimalProfile findbugsProfile = new FindbugsSecurityMinimalProfile(importer);
-    Context context = new Context();
-    findbugsProfile.define(context);
+    FindbugsSecurityMinimalProfile secOnlyProfile = new FindbugsSecurityMinimalProfile(importer);
+    ValidationMessages validation = ValidationMessages.create();
+    RulesProfile profile = secOnlyProfile.createProfile(validation);
 
-    BuiltInQualityProfile profile = context.profile(Java.KEY, FindbugsSecurityMinimalProfile.FINDBUGS_SECURITY_AUDIT_PROFILE_NAME);
-    assertThat(logTester.getLogs(LoggerLevel.ERROR)).isNull();
-    // FSB rules must be added to FsbClassifier.groovy otherwise new rules metadata are not added in rules-findsecbugs.xml
-    assertThat(logTester.getLogs(LoggerLevel.WARN)).isNull();
+
+    assertThat(validation.getErrors()).isEmpty();
+    assertThat(validation.getWarnings()).hasSize(8);
     // The standard FindBugs include only 9. Fb-Contrib and FindSecurityBugs include other rules
-    assertThat(profile.rules().stream().filter(r -> r.repoKey().equals(FindbugsRulesDefinition.REPOSITORY_KEY)).count()).isEqualTo(8);
+    assertThat(profile.getActiveRulesByRepository(FindbugsRulesDefinition.REPOSITORY_KEY)).hasSize(8);
     // 94 rules total - 8 fb = 86
-    assertThat(profile.rules().stream().filter(r -> r.repoKey().equals(FindSecurityBugsRulesDefinition.REPOSITORY_KEY)).count()).isEqualTo(93);
+    assertThat(profile.getActiveRulesByRepository(FindSecurityBugsRulesDefinition.REPOSITORY_KEY)).hasSize(85);
   }
 }
