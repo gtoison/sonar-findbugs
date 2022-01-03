@@ -24,6 +24,7 @@ import java.util.ArrayList;
 import org.mockito.ArgumentMatcher;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
+import org.sonar.api.rule.RuleKey;
 import org.sonar.api.rules.Rule;
 import org.sonar.api.rules.RuleFinder;
 import org.sonar.api.rules.RuleQuery;
@@ -85,6 +86,20 @@ public class FakeRuleFinder {
     }
     when(ruleFinder.findAll(argThat(ruleQuery -> ruleQuery.getRepositoryKey() == null && ruleQuery.getKey() == null))).thenReturn(allRules);
 
+    // Mock ruleFinder.findByKey(RuleKey key)
+    when(ruleFinder.findByKey(any(RuleKey.class))).thenAnswer(new Answer<Rule>() {
+      @Override
+      public Rule answer(InvocationOnMock invocation) throws Throwable {
+        RuleKey key = invocation.getArgument(0, RuleKey.class);
+        for (Rule rule : allRules) {
+          if (rule.getKey().equals(key.rule()) && rule.getRepositoryKey().equals(key.repository())) {
+            return rule;
+          }
+        }
+        return null;
+      }
+    });
+    
     return ruleFinder;
   }
 

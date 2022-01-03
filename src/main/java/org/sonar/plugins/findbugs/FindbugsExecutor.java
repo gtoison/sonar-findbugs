@@ -24,6 +24,8 @@ import com.google.common.base.Throwables;
 import com.google.common.collect.Lists;
 import edu.umd.cs.findbugs.BugCollection;
 import edu.umd.cs.findbugs.BugInstance;
+import edu.umd.cs.findbugs.BugPattern;
+import edu.umd.cs.findbugs.DetectorFactory;
 import edu.umd.cs.findbugs.DetectorFactoryCollection;
 import edu.umd.cs.findbugs.FindBugs;
 import edu.umd.cs.findbugs.FindBugs2;
@@ -41,7 +43,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.sonar.api.batch.ScannerSide;
 import org.sonar.api.batch.fs.FileSystem;
+import org.sonar.api.batch.rule.ActiveRules;
 import org.sonar.api.config.Configuration;
+import org.sonar.api.rule.RuleKey;
+import org.sonar.plugins.findbugs.rules.FbContribRulesDefinition;
+import org.sonar.plugins.findbugs.rules.FindSecurityBugsJspRulesDefinition;
+import org.sonar.plugins.findbugs.rules.FindSecurityBugsRulesDefinition;
+import org.sonar.plugins.findbugs.rules.FindbugsRulesDefinition;
 
 import java.io.File;
 import java.io.FileReader;
@@ -61,12 +69,15 @@ import java.util.concurrent.TimeoutException;
 public class FindbugsExecutor {
 
   private static final String FINDBUGS_CORE_PLUGIN_ID = "edu.umd.cs.findbugs.plugins.core";
+  private static final String FINDSECBUGS_PLUGIN_ID = "com.h3xstream.findsecbugs";
+  private static final String SPOTBUGS_CONTRIB_PLUGIN_ID = "com.mebigfatguy.fbcontrib";
 
   private static final Logger LOG = LoggerFactory.getLogger(FindbugsExecutor.class);
   public static final List<String> EXISTING_FINDBUGS_REPORT_PATHS = Arrays.asList("/target/findbugsXml.xml","/target/spotbugsXml.xml");
 
   private FileSystem fs;
   private Configuration config;
+  private ActiveRules activeRules;
 
   /**
    * Map of priority level names to their numeric values.
@@ -84,10 +95,11 @@ public class FindbugsExecutor {
 
   private final FindbugsConfiguration configuration;
 
-  public FindbugsExecutor(FindbugsConfiguration configuration, FileSystem fs, Configuration config) {
+  public FindbugsExecutor(FindbugsConfiguration configuration, FileSystem fs, Configuration config, ActiveRules activeRules) {
     this.configuration = configuration;
     this.fs = fs;
     this.config = config;
+    this.activeRules = activeRules;
   }
 
   @VisibleForTesting
@@ -113,9 +125,8 @@ public class FindbugsExecutor {
     OutputStream xmlOutput = null;
     Collection<Plugin> customPlugins = null;
     ExecutorService executorService = Executors.newSingleThreadExecutor();
-    try {
-      final FindBugs2 engine = new FindBugs2();
 
+    try (final FindBugs2 engine = new FindBugs2()) {
       Project project = configuration.getFindbugsProject();
 
       if(project.getFileCount() == 0) {
@@ -142,6 +153,7 @@ public class FindbugsExecutor {
 
       UserPreferences userPreferences = UserPreferences.createDefaultUserPreferences();
       userPreferences.setEffort(configuration.getEffort());
+      disableUnnecessaryDetectors(userPreferences);
       engine.setUserPreferences(userPreferences);
 
       engine.addFilter(configuration.saveIncludeConfigXml().getAbsolutePath(), true);
@@ -311,4 +323,53 @@ public class FindbugsExecutor {
     }
   }
 
+  private void disableUnnecessaryDetectors(UserPreferences userPreferences) {
+    for (DetectorFactory detectorFactory : DetectorFactoryCollection.instance().getFactories()) {
+      boolean enabled = !detectorFactory.isReportingDetector() || detectorFactoryHasActiveRules(detectorFactory);
+      
+      userPreferences.enableDetector(detectorFactory, enabled);
+    }
+  }
+  
+  private boolean detectorFactoryHasActiveRules(DetectorFactory detectorFactory) {
+    Collection<String> repositories = repositoriesForPlugin(detectorFactory.getPlugin());
+    
+    if (repositories.isEmpty()) {
+      LOG.warn("Detector {} is activated because it is not from a built-in plugin, cannot check if there are some active rules", detectorFactory);
+      return true;
+    }
+    
+    for (BugPattern bugPattern : detectorFactory.getReportedBugPatterns()) {
+      String bugPatternType = bugPattern.getType();
+      
+      for (String repository : repositories) {
+        RuleKey ruleKey = RuleKey.of(repository, bugPatternType);
+
+        if (activeRules.find(ruleKey) != null) {
+          return true;
+        }
+      }
+    }
+    
+    return false;
+  }
+
+  /**
+   * @param plugin
+   * @return a collection of repository keys or an empty collection in case the plugin is unknown
+   */
+  private Collection<String> repositoriesForPlugin(Plugin plugin) {
+    switch (plugin.getPluginId()) {
+    case FINDBUGS_CORE_PLUGIN_ID:
+      return Collections.singletonList(FindbugsRulesDefinition.REPOSITORY_KEY);
+    case FINDSECBUGS_PLUGIN_ID:
+      return Arrays.asList(
+          FindSecurityBugsRulesDefinition.REPOSITORY_KEY, 
+          FindSecurityBugsJspRulesDefinition.REPOSITORY_KEY);
+    case SPOTBUGS_CONTRIB_PLUGIN_ID:
+      return Collections.singletonList(FbContribRulesDefinition.REPOSITORY_KEY);
+    default:
+      return Collections.emptyList();
+    }
+  }
 }
